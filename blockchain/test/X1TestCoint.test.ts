@@ -32,9 +32,12 @@ describe("X1TestCoin", function () {
     const stakeAmount = ethers.parseEther("10");
 
     const tx = await token.transfer(user.address, stakeAmount);
-    await tx.wait(); // Wait for the transfer to be mined
+    
+    // Wait for the transfer to be mined
+    await tx.wait(); 
 
-    const actualStakeAmount = stakeAmount - (stakeAmount * BigInt(5)) / BigInt(100); // 5% burn on transfer
+    // 5% burn on transfer
+    const actualStakeAmount = stakeAmount - (stakeAmount * BigInt(5)) / BigInt(100); 
 
     // Stake the amount the user actually holds
     await token.connect(user).stake(actualStakeAmount);

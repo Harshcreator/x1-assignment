@@ -17,7 +17,7 @@ interface WalletContextType {
 const WalletContext = createContext<WalletContextType | null>(null);
 
 const CONTRACT_ADDRESS = '0xe038B1f7809C77dbe87400c6389704c90883E99E';
-const REQUIRED_CHAIN_ID = '0xaa36a7'; // Ethereum Mainnet
+const REQUIRED_CHAIN_ID = '0xaa36a7'; // Sepolia testnet
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [address, setAddress] = useState<string | null>(null);

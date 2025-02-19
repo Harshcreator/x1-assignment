@@ -17,7 +17,7 @@ interface WalletContextType {
 const WalletContext = createContext<WalletContextType | null>(null);
 
 const CONTRACT_ADDRESS = '0xe038B1f7809C77dbe87400c6389704c90883E99E';
-const REQUIRED_CHAIN_ID = '0x1'; // Ethereum Mainnet
+const REQUIRED_CHAIN_ID = '0xaa36a7'; // Ethereum Mainnet
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [address, setAddress] = useState<string | null>(null);
@@ -95,11 +95,33 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const updateBalance = async (userAddress: string, provider: ethers.BrowserProvider) => {
     try {
       const contract = new ethers.Contract(CONTRACT_ADDRESS, X1CoinABI, provider);
+
+      // Add debug logging
+      console.log('Contract address:', CONTRACT_ADDRESS);
+      console.log('User address:', userAddress);
+      
+      // First verify if the contract exists
+      const code = await provider.getCode(CONTRACT_ADDRESS);
+      if (code === '0x') {
+        throw new Error('Contract not deployed at specified address');
+      }
+
       const userBalance = await contract.balanceOf(userAddress);
+      console.log('Raw balance:', userBalance);
       setBalance(ethers.formatEther(userBalance));
-    } catch (error) {
+
+    } catch (error: any) {
       console.error('Error updating balance:', error);
-      throw new Error('Failed to fetch balance');
+      if (error?.code === 'CALL_EXCEPTION') {
+        console.error('Contract call exception:', error);
+
+        // Check if contract exists but call failed
+        throw new Error('Contract call failed - verify contract deployment and ABI');
+      } else if (error instanceof Error) {
+        throw new Error(`Failed to fetch balance: ${error.message}`);
+      } else {
+        throw new Error('Failed to fetch balance: Unknown error');
+      }
     }
   };
 

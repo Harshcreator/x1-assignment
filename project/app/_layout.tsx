@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { WalletProvider } from '../src/context/WalletContext';
+import { AuthProvider } from '../src/context/AuthContext';
 
 declare global {
   interface Window {
@@ -16,11 +17,13 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <WalletProvider>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="+not-found" />
-      </Stack>
-      <StatusBar style="auto" />
-    </WalletProvider>
+    <AuthProvider>
+      <WalletProvider>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="+not-found" />
+        </Stack>
+        <StatusBar style="auto" />
+      </WalletProvider>
+    </AuthProvider>
   );
 }

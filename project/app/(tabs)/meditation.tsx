@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { Accelerometer } from 'expo-sensors';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -11,6 +11,7 @@ export default function MeditationScreen() {
   const [timeRemaining, setTimeRemaining] = useState(MEDITATION_DURATION);
   const [movementViolations, setMovementViolations] = useState(0);
   const [{ x, y, z }, setData] = useState({ x: 0, y: 0, z: 0 });
+  const [isWebPlatform] = useState(Platform.OS === 'web');
 
   useEffect(() => {
     let subscription: any = null;

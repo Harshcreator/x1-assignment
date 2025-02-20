@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { ethers } from 'ethers';
+import { ethers, Provider } from 'ethers';
 import { Alert, Platform } from 'react-native';
 import { X1CoinABI } from '../contracts/X1CoinABI';
 
@@ -36,12 +36,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   };
 
   const checkNetwork = async () => {
-    if (!window.ethereum) return false;
-    
     try {
       const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
       setChainId(currentChainId);
-      
+
       if (currentChainId !== REQUIRED_CHAIN_ID) {
         try {
           await window.ethereum.request({
@@ -51,9 +49,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           return true;
         } catch (switchError: any) {
           if (switchError.code === 4902) {
-            throw new Error('Please add Ethereum Mainnet to your wallet');
+            throw new Error('Please add Sepolia to your wallet');
           } else {
-            throw new Error('Please switch to Ethereum Mainnet');
+            throw new Error('Please switch to Sepolia');
           }
         }
       }
@@ -78,7 +76,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
       const provider = new ethers.BrowserProvider(window.ethereum);
       const accounts = await provider.listAccounts();
-      
+
       if (accounts.length > 0) {
         const userAddress = accounts[0].address;
         setAddress(userAddress);
@@ -99,7 +97,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       // Add debug logging
       console.log('Contract address:', CONTRACT_ADDRESS);
       console.log('User address:', userAddress);
-      
+
       // First verify if the contract exists
       const code = await provider.getCode(CONTRACT_ADDRESS);
       if (code === '0x') {
@@ -127,7 +125,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     checkIfWalletIsConnected();
-    
+
     if (Platform.OS === 'web' && window.ethereum) {
       window.ethereum.on('accountsChanged', (accounts: string[]) => {
         if (accounts.length > 0) {
@@ -145,7 +143,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       if (Platform.OS === 'web' && window.ethereum) {
-        window.ethereum.removeListener('accountsChanged', () => {});
+        window.ethereum.removeListener('accountsChanged', () => { });
         window.ethereum.removeListener('chainChanged', handleChainChanged);
       }
     };
@@ -165,7 +163,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
       const provider = new ethers.BrowserProvider(window.ethereum);
       const accounts = await provider.send('eth_requestAccounts', []);
-      
+
       if (!accounts || accounts.length === 0) {
         throw new Error('No accounts found. Please check your MetaMask configuration.');
       }
@@ -185,8 +183,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   const penalize = async () => {
     try {
-      if (!address) throw new Error('Wallet not connected');
-      
+      if (!address) {
+        throw new Error('Wallet not connected');
+      }
+
       if (chainId !== REQUIRED_CHAIN_ID) {
         throw new Error('Please switch to Ethereum Mainnet');
       }
@@ -195,24 +195,51 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const signer = await provider.getSigner();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, X1CoinABI, signer);
 
+      // Get current balance
       const currentBalance = await contract.balanceOf(address);
+
       if (currentBalance <= 0) {
         throw new Error('Insufficient balance');
       }
 
-      const penaltyAmount = (currentBalance * BigInt(20)) / BigInt(100); // 20% penalty
-      
-      const tx = await contract.burn(penaltyAmount);
-      await tx.wait();
+      // Calculate penalty amount (20% of current balance)
+      const penaltyAmount = (currentBalance * BigInt(20)) / BigInt(100);
 
-      // Update balances after penalty
+      // Estimate gas before sending transaction
+      try {
+        await contract.burn.estimateGas(penaltyAmount);
+      } catch (error) {
+        console.error('Gas estimation failed:', error);
+        throw new Error('Transaction would fail - you might not have permission to burn tokens or the contract might be paused');
+      }
+
+      // Send transaction with explicit gas limit
+      const tx = await contract.burn(penaltyAmount, {
+        gasLimit: 100000 // Set a reasonable gas limit
+      });
+
+      // Wait for transaction confirmation
+      const receipt = await tx.wait();
+
+      if (!receipt.status) {
+        throw new Error('Transaction failed');
+      }
+
+      // Update balances after successful penalty
       const newBalance = await contract.balanceOf(address);
       setBalance(ethers.formatEther(newBalance));
       setBurnedCoins(prev => (Number(prev) + Number(ethers.formatEther(penaltyAmount))).toString());
+
     } catch (error) {
       console.error('Error applying penalty:', error);
       if (error instanceof Error) {
-        throw new Error(error.message);
+        if (error.message.includes('user rejected')) {
+          throw new Error('Transaction was rejected by user');
+        } else if (error.message.includes('insufficient funds')) {
+          throw new Error('Insufficient funds to cover gas fees');
+        } else {
+          throw new Error(error.message || 'Failed to apply penalty');
+        }
       }
       throw new Error('Failed to apply penalty');
     }

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "168772688828",
+    "project_id": "x1coin-a695c",
+    "storage_bucket": "x1coin-a695c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:168772688828:android:558a27da6a5d041e3829b9",
+        "android_client_info": {
+          "package_name": "com.x1coin"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAyQkXUd2sQ-x7SjGKVsk3j6rP_Tb6vwIA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

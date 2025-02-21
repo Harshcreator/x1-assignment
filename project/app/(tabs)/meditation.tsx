@@ -1,28 +1,36 @@
 import { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Alert } from 'react-native';
 import { Accelerometer } from 'expo-sensors';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useWallet } from '../../src/context/WalletContext';
+import { useAuth } from '../../src/context/AuthContext';
 
 const MOVEMENT_THRESHOLD = 0.3;
 const MEDITATION_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 export default function MeditationScreen() {
+  const { user } = useAuth();
+  const { rewardMeditation, isConnected } = useWallet();
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(MEDITATION_DURATION);
   const [movementViolations, setMovementViolations] = useState(0);
   const [{ x, y, z }, setData] = useState({ x: 0, y: 0, z: 0 });
   const [isWebPlatform] = useState(Platform.OS === 'web');
+  const [sessionStats, setSessionStats] = useState({
+    lastReward: '0',
+    violations: 0,
+  });
 
   useEffect(() => {
     let subscription: any = null;
     let timer: NodeJS.Timeout | null = null;
 
     if (isSessionActive) {
-      // Start accelerometer monitoring
-      subscription = Accelerometer.addListener((accelerometerData) => {
-        setData(accelerometerData);
-      });
-      Accelerometer.setUpdateInterval(1000);
+      // Only start accelerometer on native platforms
+      if (!isWebPlatform) {
+        subscription = Accelerometer.addListener(setData);
+        Accelerometer.setUpdateInterval(1000);
+      }
 
       // Start timer
       timer = setInterval(() => {
@@ -37,13 +45,15 @@ export default function MeditationScreen() {
     }
 
     return () => {
-      subscription && subscription.remove();
+      if (!isWebPlatform && subscription) {
+        subscription.remove();
+      }
       if (timer) clearInterval(timer);
     };
   }, [isSessionActive]);
 
   useEffect(() => {
-    if (isSessionActive) {
+    if (isSessionActive && !isWebPlatform) {
       const movement = Math.sqrt(x * x + y * y + z * z);
       if (movement > MOVEMENT_THRESHOLD) {
         setMovementViolations((prev) => prev + 1);
@@ -51,13 +61,47 @@ export default function MeditationScreen() {
     }
   }, [x, y, z, isSessionActive]);
 
-  const handleSessionComplete = () => {
+  const handleSessionComplete = async () => {
     setIsSessionActive(false);
-    // TODO: Implement reward logic
-    console.log('Session completed with violations:', movementViolations);
+
+    if (!user) {
+      Alert.alert('Not Logged In', 'Please log in to earn rewards for meditation.');
+      return;
+    }
+
+    if (!isConnected) {
+      Alert.alert('Wallet Not Connected', 'Please connect your wallet to earn rewards.');
+      return;
+    }
+    try {
+      const reward = await rewardMeditation(movementViolations);
+      setSessionStats({
+        lastReward: reward,
+        violations: movementViolations,
+      });
+      Alert.alert(
+        'Session Complete!',
+        `You earned ${reward} X1C\nMovement violations: ${movementViolations}`
+      );
+    } catch (error) {
+      Alert.alert(
+        'Reward Error',
+        error instanceof Error ? error.message : 'Failed to process reward'
+      );
+    }
   };
 
   const startSession = () => {
+    if (!user) {
+      Alert.alert('Not Logged In', 'Please log in to start a meditation session.');
+      return;
+    }
+
+    if (!isConnected) {
+      Alert.alert('Wallet Not Connected', 'Please connect your wallet to earn rewards.');
+      return;
+    }
+
     setIsSessionActive(true);
     setTimeRemaining(MEDITATION_DURATION);
     setMovementViolations(0);

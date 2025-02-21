@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { ethers, Provider } from 'ethers';
+import { ethers } from 'ethers';
 import { Alert, Platform } from 'react-native';
 import { X1CoinABI } from '../contracts/X1CoinABI';
 
@@ -10,6 +10,7 @@ interface WalletContextType {
   burnedCoins: string;
   connectWallet: () => Promise<void>;
   penalize: () => Promise<void>;
+  rewardMeditation: (violations: number) => Promise<string>;
   isConnected: boolean;
   chainId: string | null;
 }
@@ -18,6 +19,8 @@ const WalletContext = createContext<WalletContextType | null>(null);
 
 const CONTRACT_ADDRESS = '0xe038B1f7809C77dbe87400c6389704c90883E99E';
 const REQUIRED_CHAIN_ID = '0xaa36a7'; // Sepolia testnet
+const REWARD_AMOUNT = ethers.parseEther('10'); // 10 X1Coins per successful session
+const VIOLATION_PENALTY = ethers.parseEther('2'); // 2 X1Coins deducted per violation
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [address, setAddress] = useState<string | null>(null);
@@ -36,6 +39,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   };
 
   const checkNetwork = async () => {
+    if (!window.ethereum) return false;
+
     try {
       const currentChainId = await window.ethereum.request({ method: 'eth_chainId' });
       setChainId(currentChainId);
@@ -245,6 +250,69 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const rewardMeditation = async (violations: number) => {
+    try {
+      if (!address) {
+        throw new Error('Wallet not connected');
+      }
+
+      if (chainId !== REQUIRED_CHAIN_ID) {
+        throw new Error('Please switch to Sepolia');
+      }
+
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      const signer = await provider.getSigner();
+      const contract = new ethers.Contract(CONTRACT_ADDRESS, X1CoinABI, signer);
+
+      // Calculate final reward based on violations
+      const penaltyAmount = VIOLATION_PENALTY * BigInt(violations);
+      const finalReward = violations > 0 ? REWARD_AMOUNT - penaltyAmount : REWARD_AMOUNT;
+
+      if (finalReward <= BigInt(0)) {
+        throw new Error('No reward earned due to too many violations');
+      }
+      // Estimate gas before sending transaction
+      try {
+        await contract.mint.estimateGas(address, finalReward);
+      } catch (error) {
+        console.error('Gas estimation failed:', error);
+        throw new Error('Transaction would fail - you might not have permission to mint tokens or the contract might be paused');
+      }
+
+      // Send transaction with explicit gas limit
+      const tx = await contract.mint(address, finalReward, {
+        gasLimit: 100000 // Set a reasonable gas limit
+      });
+
+      // Wait for transaction confirmation
+      const receipt = await tx.wait();
+
+      if (!receipt.status) {
+        throw new Error('Transaction failed');
+      }
+
+      // Update balance after successful reward
+      const newBalance = await contract.balanceOf(address);
+      setBalance(ethers.formatEther(newBalance));
+
+      return ethers.formatEther(finalReward);
+
+    } catch (error) {
+      console.error('Error rewarding meditation:', error);
+      if (error instanceof Error) {
+        if (error.message.includes('user rejected')) {
+          throw new Error('Transaction was rejected by user');
+        } else if (error.message.includes('insufficient funds')) {
+          throw new Error('Insufficient funds to cover gas fees');
+        } else {
+          throw new Error(error.message || 'Failed to reward meditation');
+        }
+      }
+      throw new Error('Failed to reward meditation');
+
+    }
+  };
+
   const value = {
     address,
     balance,
@@ -252,6 +320,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     burnedCoins,
     connectWallet,
     penalize,
+    rewardMeditation,
     isConnected: !!address,
     chainId,
   };
